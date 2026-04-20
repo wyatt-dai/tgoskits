@@ -47,7 +47,7 @@ const RUNTIME_LIBRARY_DIRS: &[&str] = &["lib", "usr/lib", "usr/local/lib"];
 const CHINA_ALPINE_MIRROR: &str = "https://mirrors.cernet.edu.cn/alpine";
 const US_ALPINE_MIRROR: &str = "https://dl-cdn.alpinelinux.org/alpine";
 const USB_STICK_IMAGE_NAME: &str = "usb-stick.raw";
-const USB_STICK_IMAGE_SIZE: u64 = 16 * 1024 * 1024;
+const USB_STICK_IMAGE_SIZE: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StarryCaseAssets {
@@ -287,8 +287,7 @@ fn case_uses_c_pipeline(case: &StarryQemuCase) -> bool {
 
 fn case_uses_usb_qemu_assets(arch: &str, case: &StarryQemuCase) -> bool {
     let _ = arch;
-    let _ = case;
-    false
+    case.name == "usb"
 }
 
 fn case_c_source_dir(case: &StarryQemuCase) -> PathBuf {
