@@ -8467,6 +8467,7 @@ dependencies = [
  "ax-io",
  "ax-kernel-guard",
  "ax-kspin",
+ "ax-lazyinit",
  "ax-log",
  "ax-memory-addr",
  "ax-memory-set",
