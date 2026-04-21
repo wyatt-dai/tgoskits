@@ -80,7 +80,7 @@ impl ConsoleIf for ConsoleIfImpl {
     }
 
     #[cfg(feature = "irq")]
-    fn handle_input_irq() -> ConsoleIrqEvent {
+    fn handle_irq() -> ConsoleIrqEvent {
         let _guard = UART.lock();
         let lsr = unsafe {
             read_volatile((phys_to_virt(UART_BASE).as_usize() + UART_LSR_OFFSET) as *const u32)

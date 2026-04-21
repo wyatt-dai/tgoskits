@@ -98,7 +98,7 @@ pub fn set_input_irq_enabled(enabled: bool) {
 }
 
 /// Handles a PL011 input interrupt and returns the corresponding event flags.
-pub fn handle_input_irq() -> ConsoleIrqEvent {
+pub fn handle_irq() -> ConsoleIrqEvent {
     let _guard = UART.lock();
     let mis = read_reg(PL011_MIS);
     let clear = mis & PL011_INPUT_IRQ_MASK;
@@ -162,8 +162,8 @@ macro_rules! console_if_impl {
 
             /// Handles a console input IRQ and clears device-side IRQ state.
             #[cfg(feature = "irq")]
-            fn handle_input_irq() -> ax_plat::console::ConsoleIrqEvent {
-                $crate::pl011::handle_input_irq()
+            fn handle_irq() -> ax_plat::console::ConsoleIrqEvent {
+                $crate::pl011::handle_irq()
             }
         }
     };

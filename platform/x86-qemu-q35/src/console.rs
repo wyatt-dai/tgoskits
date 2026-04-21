@@ -73,7 +73,7 @@ impl ConsoleIf for ConsoleIfImpl {
     fn set_input_irq_enabled(_enabled: bool) {}
 
     #[cfg(feature = "irq")]
-    fn handle_input_irq() -> ax_plat::console::ConsoleIrqEvent {
+    fn handle_irq() -> ax_plat::console::ConsoleIrqEvent {
         ax_plat::console::ConsoleIrqEvent::SPURIOUS
     }
 }

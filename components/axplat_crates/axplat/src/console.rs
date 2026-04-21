@@ -43,7 +43,7 @@ pub trait ConsoleIf {
     /// Handles a console input IRQ in interrupt context and returns the
     /// corresponding device events.
     #[cfg(feature = "irq")]
-    fn handle_input_irq() -> ConsoleIrqEvent;
+    fn handle_irq() -> ConsoleIrqEvent;
 }
 
 struct EarlyConsole;

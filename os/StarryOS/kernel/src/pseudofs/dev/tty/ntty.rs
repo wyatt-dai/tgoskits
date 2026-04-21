@@ -30,7 +30,7 @@ lazy_static! {
 }
 
 fn handle_console_input_irq() {
-    let events = ax_hal::console::handle_input_irq();
+    let events = ax_hal::console::handle_irq();
     if events.intersects(
         ax_hal::console::ConsoleIrqEvent::RX_READY
             | ax_hal::console::ConsoleIrqEvent::RX_ERROR
