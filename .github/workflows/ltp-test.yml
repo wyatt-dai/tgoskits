@@ -1,0 +1,85 @@
+name: LTP Test
+
+on:
+  schedule:
+    # GitHub cron uses UTC. This runs at 03:00 Beijing time (UTC+8).
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ltp-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ltp_test:
+    name: LTP ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/rcore-os/tgoskits-container:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            cross: aarch64-linux-gnu
+          - arch: riscv64
+            cross: riscv64-linux-gnu
+          - arch: x86_64
+            cross: x86_64-linux-gnu
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install cross-compiler
+        shell: bash
+        run: |
+          set -eux
+          apt-get update
+          apt-get install -y "gcc-${{ matrix.cross }}" autoconf automake libtool bison flex m4 pkg-config
+
+      - name: Ensure qemu user emulators
+        shell: bash
+        run: |
+          set -eux
+          for emulator in qemu-aarch64-static qemu-riscv64-static qemu-x86_64-static; do
+            if ! command -v "${emulator}" >/dev/null 2>&1; then
+              echo "::error::${emulator} not found"
+              exit 1
+            fi
+          done
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ltp-${{ matrix.arch }}
+          save-if: ${{ github.event_name == 'schedule' }}
+
+      - name: Show Rust version
+        run: rustc --version
+
+      - name: Run LTP test
+        env:
+          STARRY_APK_REGION: us
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo xtask starry app qemu -t ltp --arch "${{ matrix.arch }}"
+
+      - name: Upload LTP result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ltp-result-${{ matrix.arch }}
+          path: |
+            tmp/axbuild/starry-app/ltp/
+          retention-days: 30
