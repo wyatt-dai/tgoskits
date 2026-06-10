@@ -506,7 +506,7 @@ fn std_build_target_for(target: &str, plat_dyn: bool) -> anyhow::Result<StdBuild
     let (target_name, tool_prefix) = if target.starts_with("x86_64-") {
         ("x86_64-unknown-linux-musl", "x86_64-linux-musl")
     } else if target.starts_with("aarch64-") {
-        ("aarch64-unknown-linux-musl", "aarch64-linux-musl")
+        ("aarch64-unknown-linux-musl", "aarch64-linux-gnu")
     } else if target.starts_with("riscv64") {
         ("riscv64gc-unknown-linux-musl", "riscv64-linux-musl")
     } else if target.starts_with("loongarch64-") {
@@ -535,7 +535,7 @@ fn std_build_target_for(target: &str, plat_dyn: bool) -> anyhow::Result<StdBuild
 fn std_c_toolchain_env(target_name: &str, tool_prefix: &str) -> HashMap<String, String> {
     let mut env = HashMap::new();
     let target_env = target_name.replace('-', "_");
-    let cc = format!("{tool_prefix}-cc");
+    let cc = format!("{tool_prefix}-gcc");
     let ar = format!("{tool_prefix}-ar");
     let c_flags = std_c_target_flags(target_name).join(" ");
     env.insert(format!("CC_{target_env}"), cc.clone());

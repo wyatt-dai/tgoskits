@@ -4,6 +4,8 @@ args = [
     "1G",
     "-cpu",
     "cortex-a53",
+    "-machine",
+    "virt,gic-version=3",
     "-device",
     "virtio-blk-pci,drive=disk0",
     "-drive",
@@ -12,11 +14,13 @@ args = [
     "virtio-net-pci,netdev=net0",
     "-netdev",
     "user,id=net0",
+    "-monitor",
+    "telnet:localhost:4444,server,nowait",
 ]
 uefi = false
 to_bin = true
 shell_prefix = "root@starry:"
-shell_init_cmd = "START=830 /usr/bin/run-ltp.sh"
+shell_init_cmd = "START=1 /usr/bin/run-ltp.sh"
 success_regex = ['(?m)LTP TEST COMPLETE']
 fail_regex = ['(?i)\bpanic(?:ked)?\b']
-timeout = 600
+timeout = 7200

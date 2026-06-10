@@ -194,6 +194,8 @@ pub struct TaskContext {
     pub lr: u64, // r30
     /// Thread Pointer
     pub tpidr_el0: u64,
+    /// Saved PSTATE (DAIF bits: Debug, SError, IRQ, FIQ).
+    pub spsr: u64,
     /// The `ttbr0_el1` register value, i.e., the page table root.
     #[cfg(feature = "uspace")]
     pub ttbr0_el1: ax_memory_addr::PhysAddr,
@@ -267,10 +269,16 @@ unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task:
         stp     x19, x20, [x0, 1 * 8]
         mov     x19, sp
         str     x19, [x0]
+        // save PSTATE (DAIF)
+        mrs     x19, daif
+        str     x19, [x0, 14 * 8]
 
         // restore new context
         ldr     x19, [x1]
         mov     sp, x19
+        // restore PSTATE (DAIF)
+        ldr     x19, [x1, 14 * 8]
+        msr     daif, x19
         ldp     x19, x20, [x1, 1 * 8]
         ldp     x21, x22, [x1, 3 * 8]
         ldp     x23, x24, [x1, 5 * 8]

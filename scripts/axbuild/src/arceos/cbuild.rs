@@ -631,7 +631,7 @@ fn source_arch_hint(cflags: &[String]) -> &str {
 }
 
 fn cc_for_arch(arch: &str) -> String {
-    format!("{arch}-linux-musl-gcc")
+    format!("{arch}-linux-gnu-gcc")
 }
 
 fn map_c_app_features(case_features: &[String], base_features: &[String]) -> Vec<String> {
@@ -718,7 +718,7 @@ fn archive_static_lib(arch: &str, path: &Path, objects: &[PathBuf]) -> anyhow::R
 }
 
 fn ar_for_arch(arch: &str) -> String {
-    format!("{arch}-linux-musl-ar")
+    format!("{arch}-linux-gnu-ar")
 }
 
 fn link_c_app(

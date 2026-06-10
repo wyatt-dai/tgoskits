@@ -456,15 +456,27 @@ const PERIODIC_INTERVAL_NANOS: u64 = ax_hal::time::NANOS_PER_SEC / ax_config::TI
 static NEXT_DEADLINE: u64 = 0;
 
 #[cfg(feature = "irq")]
+static TIMER_LOG_COUNT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+#[cfg(feature = "irq")]
 fn update_timer(_irq_num: usize) {
     let now_ns = ax_hal::time::monotonic_time_nanos();
     // Safety: we have disabled preemption in IRQ handler.
     let mut deadline = unsafe { NEXT_DEADLINE.read_current_raw() };
-    if now_ns >= deadline {
+    let reset = now_ns >= deadline;
+    if reset {
         deadline = now_ns + PERIODIC_INTERVAL_NANOS;
     }
     unsafe { NEXT_DEADLINE.write_current_raw(deadline + PERIODIC_INTERVAL_NANOS) };
     ax_hal::time::set_oneshot_timer(deadline);
+
+    let cnt = TIMER_LOG_COUNT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    static STORM_LOGGED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+    if reset && !STORM_LOGGED.swap(true, core::sync::atomic::Ordering::Relaxed) {
+        warn!("[timer] OVERFLOW! #{} now={} deadline={}", cnt, now_ns, deadline);
+    } else if !reset && cnt % 1000 == 0 {
+        warn!("[timer] #{} now={} deadline={} reset=false", cnt, now_ns, deadline);
+    }
 }
 
 #[cfg(feature = "irq")]

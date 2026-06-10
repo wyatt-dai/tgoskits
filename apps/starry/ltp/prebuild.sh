@@ -96,6 +96,14 @@ if [[ -n "$rootfs" && -f "$rootfs" ]]; then
             resize2fs "$rootfs" 2>/dev/null
         fi
     fi
+
+    # Remove metadata_csum on x86_64 — StarryOS ext4 driver doesn't support it
+    if [[ "$STARRY_ARCH" == "x86_64" ]]; then
+        if dumpe2fs -h "$rootfs" 2>/dev/null | grep -q metadata_csum; then
+            echo "==> Removing metadata_csum (not supported by StarryOS)..."
+            tune2fs -O ^metadata_csum "$rootfs"
+        fi
+    fi
 fi
 
 echo "==> Copying LTP to overlay..."

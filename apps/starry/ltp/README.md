@@ -174,6 +174,20 @@ cargo starry qemu --arch aarch64 --rootfs debian
 | `debugfs` | Rootfs image manipulation | `sudo apt install e2fsprogs` |
 | `git` | Download LTP source | `sudo apt install git` |
 
+## Known Issues
+
+### x86_64 Debian rootfs: `metadata_csum` kernel panic
+
+The x86_64 Debian rootfs uses ext4 `metadata_csum` feature which StarryOS's ext4 driver does not support, causing kernel panic: "failed to determine root device from available block devices". The `prebuild.sh` script automatically removes this feature with `tune2fs -O ^metadata_csum` for x86_64.
+
+### QEMU hangs after ~5 minutes
+
+StarryOS QEMU can randomly hang regardless of test execution. The 600-second timeout in QEMU configs handles this, but test results before the hang are lost. Use `START=N` to resume from a specific test number.
+
+### Signal isolation
+
+StarryOS does not properly isolate signals between parent/child processes. Tests sending SIGUSR1 can kill the test runner. The `run-ltp.sh` script uses `trap '' USR1` to mitigate this.
+
 ## Future Work
 
 1. **Shell script tests** — Include `.sh` tests by bundling LTP shell libraries (`testcases/lib/`) in the overlay and fixing PATH

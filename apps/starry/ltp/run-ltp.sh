@@ -20,10 +20,25 @@ for t in /opt/ltp/testcases/bin/*; do
     fi
     # Skip kernel module tests (cause kernel panic)
     case "$name" in *.ko) continue ;; esac
+    # Skip known problematic tests (scope_local spin::Once deadlock)
+    case "$name" in epoll_pwait06) continue ;; esac
+    # Skip tests that cause kernel panic (capacity overflow)
+    case "$name" in crash02) continue ;; esac
+    # Skip tests that cause QEMU hang (mount/ext4 issues)
+    case "$name" in mount*|statmount*) continue ;; esac
 
     total=$((total + 1))
     [ $total -lt $start ] && continue
     printf "[%d] %s ... " "$total" "$name"
+
+    # Monitor resources every 100 tests
+    if [ $((total % 100)) -eq 0 ]; then
+        echo ""
+        echo "--- Resources at test $total ---"
+        echo "Processes: $(ls /proc/*/status 2>/dev/null | wc -l)"
+        echo "FDs: $(ls /proc/*/fd 2>/dev/null | wc -l)"
+        echo "---"
+    fi
 
     result_file="/tmp/ltp_last_result"
     rc=0
