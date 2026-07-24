@@ -49,8 +49,15 @@ mod tests {
         let config = fifo_config("dwmmc", 16, true);
         let limits = protocol_rdif_config::queue_limits(&config, config.dma_mask);
 
-        assert_eq!(limits.max_blocks_per_request, 1);
-        assert_eq!(limits.max_segment_size, protocol_rdif_config::BLOCK_SIZE);
+        assert_eq!(
+            limits.max_blocks_per_request,
+            protocol_rdif_config::FIFO_MAX_BLOCKS_PER_REQUEST,
+        );
+        assert_eq!(
+            limits.max_segment_size,
+            protocol_rdif_config::BLOCK_SIZE
+                * protocol_rdif_config::FIFO_MAX_BLOCKS_PER_REQUEST as usize,
+        );
         assert!(!config.uses_dma());
     }
 }
