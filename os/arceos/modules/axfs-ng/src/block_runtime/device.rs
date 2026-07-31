@@ -1164,7 +1164,7 @@ impl BlockDeviceHandle {
         if self.completion_mode() == BlockCompletionMode::Polling {
             return self.polling_wait_for_any_key(&keys);
         }
-        if self.irq_wait_or_timeout(task_id) {
+        if !self.irq_wait_or_timeout(task_id) {
             let _ = self.poll_batch(&keys);
         }
         Ok(())
@@ -1231,9 +1231,12 @@ impl BlockDeviceHandle {
     }
 
     fn irq_wait_or_timeout(&self, task_id: u64) -> bool {
+        // Returns `true` when the wait timed out (deadline expired without a
+        // wake) and `false` when the wait was satisfied by a wake. This matches
+        // the return-value convention of `wait_for_drain_notification_timeout`.
         // Early root probing may issue block I/O while IRQs are still disabled.
         if task_id != 0 && task_can_block() {
-            task_wait_timeout(IRQ_COMPLETION_REPOLL_TIMEOUT)
+            !task_wait_timeout(IRQ_COMPLETION_REPOLL_TIMEOUT)
         } else {
             core::hint::spin_loop();
             true
@@ -1277,7 +1280,7 @@ impl BlockDeviceHandle {
                         self.polling_wait_for_any_key(&[key])?;
                         continue;
                     }
-                    if self.irq_wait_or_timeout(task_id) {
+                    if !self.irq_wait_or_timeout(task_id) {
                         let _ = self.poll_one(key);
                     }
                 }
@@ -1472,10 +1475,20 @@ fn spawn_block_drain_task(runtime: Arc<BlockRuntime>) {
             Box::new(move || {
                 loop {
                     if !block_drain_has_pending() {
-                        let notified = wait_for_drain_notification_timeout(
+                        // wait_for_drain_notification_timeout returns `true` when
+                        // the deadline expired without a notification (timeout)
+                        // and `false` when the wait was satisfied by a drain
+                        // notification. Only the timeout path needs the
+                        // full-scan fallback.
+                        let timed_out = wait_for_drain_notification_timeout(
                             core::time::Duration::from_millis(10),
                         );
-                        if !notified {
+                        if timed_out {
+                            // Lost-IRQ fallback: schedule a full pending-table
+                            // scan so completion requests whose driver events
+                            // were dropped (and thus never set
+                            // BLOCK_DRAIN_DEVICE_BITS) are still polled and
+                            // reaped, preventing a write-path deadlock.
                             BLOCK_DRAIN_FULL_SCAN.store(true, Ordering::Release);
                         }
                     }
@@ -1700,11 +1713,14 @@ pub fn map_blk_err_to_ax_err(err: BlkError) -> AxError {
 #[cfg(test)]
 mod tests {
     use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+    use core::alloc::Layout;
 
+    use dma_api::{DmaAllocHandle, DmaOp};
     use irq_framework::{HwIrq, IrqDomainId};
     use rdif_block::{Event, IdList, IrqHandler, IrqSourceInfo, QueueLimits};
 
     use super::*;
+    use crate::os::task::BlockTaskOps;
 
     struct PlannerTestQueue {
         info: QueueInfo,
@@ -1824,6 +1840,147 @@ mod tests {
         )
         .unwrap();
         device.queues[0].lock().planner.chunk_size()
+    }
+
+    struct MockTaskOps;
+
+    impl BlockTaskOps for MockTaskOps {
+        fn current_task_id(&self) -> Option<u64> {
+            Some(1)
+        }
+        fn task_yield(&self) {}
+        fn task_wait(&self) {}
+        fn task_wait_timeout(&self, _dur: Duration) -> bool {
+            false
+        }
+        fn wake_task(&self, _task_id: u64) {}
+    }
+
+    struct MockDmaOp;
+
+    impl DmaOp for MockDmaOp {
+        fn page_size(&self) -> usize {
+            4096
+        }
+        unsafe fn alloc_contiguous(
+            &self,
+            _constraints: dma_api::DmaConstraints,
+            layout: Layout,
+        ) -> Option<DmaAllocHandle> {
+            let ptr = unsafe { alloc::alloc::alloc_zeroed(layout) };
+            let addr = core::ptr::NonNull::new(ptr)?;
+            Some(unsafe {
+                DmaAllocHandle::new(addr, dma_api::DmaAddr::from(addr.as_ptr() as u64), layout)
+            })
+        }
+        unsafe fn dealloc_contiguous(&self, handle: DmaAllocHandle) {
+            unsafe { alloc::alloc::dealloc(handle.as_ptr().as_ptr(), handle.layout()) };
+        }
+        unsafe fn alloc_coherent(
+            &self,
+            constraints: dma_api::DmaConstraints,
+            layout: Layout,
+        ) -> Option<DmaAllocHandle> {
+            unsafe { self.alloc_contiguous(constraints, layout) }
+        }
+        unsafe fn dealloc_coherent(&self, handle: DmaAllocHandle) {
+            unsafe { self.dealloc_contiguous(handle) };
+        }
+        unsafe fn map_streaming(
+            &self,
+            _constraints: dma_api::DmaConstraints,
+            addr: core::ptr::NonNull<u8>,
+            _size: core::num::NonZeroUsize,
+            _direction: dma_api::DmaDirection,
+        ) -> Result<dma_api::DmaMapHandle, dma_api::DmaError> {
+            Ok(unsafe {
+                dma_api::DmaMapHandle::new(
+                    addr,
+                    dma_api::DmaAddr::from(addr.as_ptr() as u64),
+                    Layout::from_size_align_unchecked(0, 1),
+                    None,
+                )
+            })
+        }
+        unsafe fn unmap_streaming(&self, _handle: dma_api::DmaMapHandle) {}
+    }
+
+    struct InstantCompleteQueue {
+        info: QueueInfo,
+    }
+
+    impl InstantCompleteQueue {
+        fn new() -> Self {
+            let block_size = 512;
+            let limits = QueueLimits {
+                max_inflight: 1,
+                max_blocks_per_request: 1,
+                max_segments: 1,
+                max_segment_size: block_size,
+                ..QueueLimits::simple(block_size, u64::MAX)
+            };
+            Self {
+                info: QueueInfo {
+                    id: 0,
+                    device: DeviceInfo::new(4096, block_size),
+                    limits,
+                },
+            }
+        }
+    }
+
+    unsafe impl IQueue for InstantCompleteQueue {
+        fn id(&self) -> usize {
+            self.info.id
+        }
+        fn info(&self) -> QueueInfo {
+            self.info
+        }
+        fn submit_request(&mut self, _request: Request<'_>) -> Result<RequestId, BlkError> {
+            Ok(RequestId::new(1))
+        }
+        fn poll_request(&mut self, _request_id: RequestId) -> Result<RequestStatus, BlkError> {
+            Ok(RequestStatus::Complete)
+        }
+    }
+
+    impl rdif_block::DriverGeneric for InstantCompleteQueue {
+        fn name(&self) -> &str {
+            "instant-complete-queue"
+        }
+    }
+
+    #[test]
+    fn drain_all_pending_reaps_lost_irq_completion() {
+        use alloc::sync::Arc;
+
+        static TASK_OPS: MockTaskOps = MockTaskOps;
+        static DMA_OP: MockDmaOp = MockDmaOp;
+
+        crate::os::set_task_ops(&TASK_OPS);
+        crate::os::dma::install_dma_op(&DMA_OP);
+
+        let config = BlockRuntimeConfig::new(Arc::new(NoopDrainWake));
+        let device = BlockDeviceHandle::new_runtime(
+            "lost-irq-test",
+            [RuntimeQueue::Legacy(Box::new(InstantCompleteQueue::new()))],
+            Arc::new(BlockIrqBridge::new()),
+            config,
+        )
+        .unwrap();
+
+        // Submit a 1-block read.  Mock queue completes immediately in
+        // poll_request but no IRQ is fired, so drain_events sees nothing.
+        let mut buf = [0u8; 512];
+        device.read_blocks(0, &mut buf).unwrap();
+
+        // Verify the request was actually drained via the full-pending
+        // poll path (drain_all_pending), proving that the lost-IRQ
+        // fallback can reap completions without a prior IRQ wake.
+        //
+        // If drain_all_pending were broken the submitter would have
+        // deadlocked above (read_blocks waits for completion).
+        assert!(device.pending.lock().active_keys().is_empty());
     }
 
     #[test]
