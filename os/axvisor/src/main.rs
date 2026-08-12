@@ -32,9 +32,13 @@ use ax_std as _;
 mod banner;
 mod config;
 mod guest_console;
+#[cfg(feature = "rt-i2c")]
+mod i2c_rt;
 mod manager;
 mod realtime;
 mod shell;
+#[cfg(feature = "rt-uart")]
+mod uart_rt;
 mod virtio_net;
 
 #[cfg(any(feature = "backtrace", feature = "test-panic-no-backtrace"))]
@@ -91,6 +95,10 @@ fn main() {
 
     info!("[OK] Default guest initialized");
     ax_realtime::setup_host_side();
+    #[cfg(feature = "rt-i2c")]
+    i2c_rt::setup_host_side();
+    #[cfg(feature = "rt-uart")]
+    uart_rt::setup_host_side();
     realtime::run_rt_selftests();
 
     shell::console_init();
