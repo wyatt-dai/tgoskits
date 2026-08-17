@@ -37,7 +37,7 @@ mod i2c_rt;
 mod manager;
 mod realtime;
 mod shell;
-#[cfg(feature = "rt-uart")]
+#[cfg(any(feature = "rt-uart", feature = "rt-motor"))]
 mod uart_rt;
 mod virtio_net;
 
@@ -97,8 +97,9 @@ fn main() {
     ax_realtime::setup_host_side();
     #[cfg(feature = "rt-i2c")]
     i2c_rt::setup_host_side();
-    #[cfg(feature = "rt-uart")]
+    #[cfg(any(feature = "rt-uart", feature = "rt-motor"))]
     uart_rt::setup_host_side();
+    realtime::mark_rt_devices_ready();
     realtime::run_rt_selftests();
 
     shell::console_init();
